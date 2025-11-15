@@ -1,7 +1,6 @@
 import random
 import math
 
-
 NUM_FILIALEN = 5
 NUM_KONTEN = 50
 NUM_BESITZ_ROWS = 80
@@ -9,247 +8,237 @@ NUM_MITARBEITER = 30
 NUM_KARTEN = 100
 NUM_UEBERWEISUNGEN = 200
 
-TABLE_PREFIXES = {
-    "besitzt": "mm_",
-    "filialen": "mm_",
-    "karten": "mm_",
-    "kunden": "mm_",
-    "mitarbeiter": "mm_",
-    "ueberweisungen": "mm_",
-}
+T_FILIALE = "mm_filiale"
+T_KUNDEN = "mm_kunden"
+T_MITARBEITER = "mm_mitarbeiter"
+T_BESITZ = "mm_besitz"
+T_KARTEN = "mm_karten"
+T_UEBERW = "mm_ueberweisungen"
 
 
-def table_name(base: str) -> str:
-    prefix = TABLE_PREFIXES.get(base, "")
-    if prefix.endswith("_"):
-        return f"{prefix}{base}"
-    return f"{prefix}{base.capitalize()}"
-
-
-def esc(s: str) -> str:
+def esc(s):
     return s.replace("'", "''")
 
 
-def generate_create_tables_sql() -> str:
-    t_filiale = table_name("filiale")
-    t_kunden = table_name("kunden")
-    t_mitarbeiter = table_name("mitarbeiter")
-    t_besitz = table_name("besitz")
-    t_karten = table_name("karten")
-    t_ueberw = table_name("ueberweisungen")
+def generate_create_tables_sql():
+    sql = ""
 
-    stmts = []
+    sql += "CREATE TABLE " + T_FILIALE + " (\n"
+    sql += "    FNr     INT PRIMARY KEY,\n"
+    sql += "    name    TEXT,\n"
+    sql += "    adresse TEXT\n"
+    sql += ");\n\n"
 
-    stmts.append(f"""
-CREATE TABLE {t_filiale} (
-    FNr     INT PRIMARY KEY,
-    name    TEXT,
-    adresse TEXT
-);
-""".strip())
+    sql += "CREATE TABLE " + T_KUNDEN + " (\n"
+    sql += "    kontostand INT,\n"
+    sql += "    kontotyp   TEXT,\n"
+    sql += "    kontoNr    INT PRIMARY KEY,\n"
+    sql += "    FNr        INT,\n"
+    sql += "    FOREIGN KEY (FNr) REFERENCES " + T_FILIALE + "(FNr)\n"
+    sql += ");\n\n"
 
-    stmts.append(f"""
-CREATE TABLE {t_kunden} (
-    kontostand INT,
-    kontotyp   TEXT,
-    kontoNr    INT PRIMARY KEY,
-    FNr        INT,
-    FOREIGN KEY (FNr) REFERENCES {t_filiale}(FNr)
-);
-""".strip())
+    sql += "CREATE TABLE " + T_MITARBEITER + " (\n"
+    sql += "    name     TEXT,\n"
+    sql += "    gehalt   FLOAT,\n"
+    sql += "    MNr      INT PRIMARY KEY,\n"
+    sql += "    position TEXT,\n"
+    sql += "    FNr      INT,\n"
+    sql += "    FOREIGN KEY (FNr) REFERENCES " + T_FILIALE + "(FNr)\n"
+    sql += ");\n\n"
 
-    stmts.append(f"""
-CREATE TABLE {t_mitarbeiter} (
-    name     TEXT,
-    gehalt   FLOAT,
-    MNr      INT PRIMARY KEY,
-    position TEXT,
-    FNr      INT,
-    FOREIGN KEY (FNr) REFERENCES {t_filiale}(FNr)
-);
-""".strip())
+    sql += "CREATE TABLE " + T_BESITZ + " (\n"
+    sql += "    kontoNr  INT,\n"
+    sql += "    kundenNr INT,\n"
+    sql += "    PRIMARY KEY (kontoNr, kundenNr),\n"
+    sql += "    FOREIGN KEY (kontoNr) REFERENCES " + T_KUNDEN + "(kontoNr)\n"
+    sql += ");\n\n"
 
-    stmts.append(f"""
-CREATE TABLE {t_besitz} (
-    kontoNr  INT,
-    kundenNr INT,
-    PRIMARY KEY (kontoNr, kundenNr),
-    FOREIGN KEY (kontoNr) REFERENCES {t_kunden}(kontoNr)
-);
-""".strip())
+    sql += "CREATE TABLE " + T_KARTEN + " (\n"
+    sql += "    PIN      INT,\n"
+    sql += "    kartenNr INT PRIMARY KEY,\n"
+    sql += "    kontoNr  INT,\n"
+    sql += "    kundenNr INT,\n"
+    sql += "    FOREIGN KEY (kontoNr) REFERENCES " + T_KUNDEN + "(kontoNr),\n"
+    sql += "    FOREIGN KEY (kontoNr, kundenNr) REFERENCES " + T_BESITZ + "(kontoNr, kundenNr)\n"
+    sql += ");\n\n"
 
-    stmts.append(f"""
-CREATE TABLE {t_karten} (
-    PIN      INT,
-    kartenNr INT PRIMARY KEY,
-    kontoNr  INT,
-    kundenNr INT,
-    FOREIGN KEY (kontoNr) REFERENCES {t_kunden}(kontoNr),
-    FOREIGN KEY (kontoNr, kundenNr) REFERENCES {t_besitz}(kontoNr, kundenNr)
-);
-""".strip())
+    sql += "CREATE TABLE " + T_UEBERW + " (\n"
+    sql += "    betrag   FLOAT,\n"
+    sql += "    datum    INT,\n"
+    sql += "    uNr      INT PRIMARY KEY,\n"
+    sql += "    kontoNrS INT,\n"
+    sql += "    kontoNrE INT,\n"
+    sql += "    FOREIGN KEY (kontoNrS) REFERENCES " + T_KUNDEN + "(kontoNr),\n"
+    sql += "    FOREIGN KEY (kontoNrE) REFERENCES " + T_KUNDEN + "(kontoNr)\n"
+    sql += ");\n"
 
-    stmts.append(f"""
-CREATE TABLE {t_ueberw} (
-    betrag   FLOAT,
-    datum    INT,
-    uNr      INT PRIMARY KEY,
-    kontoNrS INT,
-    kontoNrE INT,
-    FOREIGN KEY (kontoNrS) REFERENCES {t_kunden}(kontoNr),
-    FOREIGN KEY (kontoNrE) REFERENCES {t_kunden}(kontoNr)
-);
-""".strip())
-
-    return "\n\n".join(stmts)
+    return sql
 
 
-
-def generate_data_and_inserts() -> str:
+def generate_data_and_inserts():
     random.seed(42)
 
-    t_filiale = table_name("filiale")
-    t_kunden = table_name("kunden")
-    t_mitarbeiter = table_name("mitarbeiter")
-    t_besitz = table_name("besitz")
-    t_karten = table_name("karten")
-    t_ueberw = table_name("ueberweisungen")
+    sql = ""
 
-    sql_parts = []
+    filialen_fnr = []
+    filiale_values = []
 
-
-    filialen = []
     for i in range(1, NUM_FILIALEN + 1):
-        filialen.append({
-            "FNr": i,
-            "name": f"Filiale {i}",
-            "adresse": f"Beispielstraße {i}, Stadt{i}"
-        })
+        fname = "Filiale " + str(i)
+        fadr = "Beispielstraße " + str(i) + ", Stadt" + str(i)
+        filialen_fnr.append(i)
 
-    if filialen:
-        values = [f"({f['FNr']}, '{esc(f['name'])}', '{esc(f['adresse'])}')" for f in filialen]
-        sql_parts.append(f"INSERT INTO {t_filiale} (FNr, name, adresse) VALUES\n  " + ",\n  ".join(values) + ";\n")
+        value = "(" + str(i) + ", '" + esc(fname) + "', '" + esc(fadr) + "')"
+        filiale_values.append(value)
 
-    konten = []
+    if len(filiale_values) > 0:
+        sql += "INSERT INTO " + T_FILIALE + " (FNr, name, adresse) VALUES\n  "
+        sql += ",\n  ".join(filiale_values)
+        sql += ";\n\n"
+
+    konten_kontoNr = []
+    kunden_values = []
+
     konto_base = 100000
     kontotypen = ["Giro", "Spar", "Business"]
 
     for i in range(NUM_KONTEN):
         kontoNr = konto_base + i
-        FNr = random.choice(filialen)["FNr"]
-        konten.append({
-            "kontoNr": kontoNr,
-            "kontostand": random.randint(-5000, 50000),
-            "kontotyp": random.choice(kontotypen),
-            "FNr": FNr
-        })
+        konten_kontoNr.append(kontoNr)
 
-    if konten:
-        values = [
-            f"({k['kontostand']}, '{esc(k['kontotyp'])}', {k['kontoNr']}, {k['FNr']})"
-            for k in konten
-        ]
-        sql_parts.append(f"INSERT INTO {t_kunden} (kontostand, kontotyp, kontoNr, FNr) VALUES\n  " + ",\n  ".join(values) + ";\n")
+        kontostand = random.randint(-5000, 50000)
+        kontotyp = random.choice(kontotypen)
+        FNr = random.choice(filialen_fnr)
 
-    konto_nrs = [k["kontoNr"] for k in konten]
+        value = "(" \
+                + str(kontostand) + ", '" \
+                + esc(kontotyp) + "', " \
+                + str(kontoNr) + ", " \
+                + str(FNr) + ")"
 
-    mitarbeiter = []
+        kunden_values.append(value)
+
+    if len(kunden_values) > 0:
+        sql += "INSERT INTO " + T_KUNDEN + " (kontostand, kontotyp, kontoNr, FNr) VALUES\n  "
+        sql += ",\n  ".join(kunden_values)
+        sql += ";\n\n"
+
+    mitarbeiter_values = []
     positions = ["Berater", "Filialleiter", "Kassierer", "Service", "IT"]
 
     for i in range(1, NUM_MITARBEITER + 1):
-        FNr = random.choice(filialen)["FNr"]
-        mitarbeiter.append({
-            "MNr": i,
-            "name": f"Mitarbeiter {i}",
-            "gehalt": round(random.uniform(2000, 6000), 2),
-            "position": random.choice(positions),
-            "FNr": FNr
-        })
+        name = "Mitarbeiter " + str(i)
+        gehalt = round(random.uniform(2000, 6000), 2)
+        position = random.choice(positions)
+        FNr = random.choice(filialen_fnr)
 
-    values = [
-        f"('{esc(m['name'])}', {m['gehalt']}, {m['MNr']}, '{esc(m['position'])}', {m['FNr']})"
-        for m in mitarbeiter
-    ]
-    sql_parts.append(f"INSERT INTO {t_mitarbeiter} (name, gehalt, MNr, position, FNr) VALUES\n  " + ",\n  ".join(values) + ";\n")
+        value = "('" + esc(name) + "', " \
+                + str(gehalt) + ", " \
+                + str(i) + ", '" \
+                + esc(position) + "', " \
+                + str(FNr) + ")"
 
-    besitz_rows = []
+        mitarbeiter_values.append(value)
+
+    if len(mitarbeiter_values) > 0:
+        sql += "INSERT INTO " + T_MITARBEITER + " (name, gehalt, MNr, position, FNr) VALUES\n  "
+        sql += ",\n  ".join(mitarbeiter_values)
+        sql += ";\n\n"
+
+    besitz_values = []
+    besitz_pairs = []
     used_pairs = set()
-    max_kunden_nr = max(1, math.ceil(NUM_KONTEN * 1.5))
+    max_kunden_nr = max(1, int(math.ceil(NUM_KONTEN * 1.5)))
 
-    while len(besitz_rows) < NUM_BESITZ_ROWS:
-        kontoNr = random.choice(konto_nrs)
+    while len(besitz_values) < NUM_BESITZ_ROWS:
+        kontoNr = random.choice(konten_kontoNr)
         kundenNr = random.randint(1, max_kunden_nr)
-        key = (kontoNr, kundenNr)
-        if key in used_pairs:
+        pair = (kontoNr, kundenNr)
+
+        if pair in used_pairs:
             continue
-        used_pairs.add(key)
-        besitz_rows.append({"kontoNr": kontoNr, "kundenNr": kundenNr})
 
-    values = [f"({b['kontoNr']}, {b['kundenNr']})" for b in besitz_rows]
-    sql_parts.append(f"INSERT INTO {t_besitz} (kontoNr, kundenNr) VALUES\n  " + ",\n  ".join(values) + ";\n")
+        used_pairs.add(pair)
+        besitz_pairs.append(pair)
 
-    besitz_pairs = [(b["kontoNr"], b["kundenNr"]) for b in besitz_rows]
+        value = "(" + str(kontoNr) + ", " + str(kundenNr) + ")"
+        besitz_values.append(value)
 
+    if len(besitz_values) > 0:
+        sql += "INSERT INTO " + T_BESITZ + " (kontoNr, kundenNr) VALUES\n  "
+        sql += ",\n  ".join(besitz_values)
+        sql += ";\n\n"
 
-    karten = []
-    karten_base = 500000
+    karten_values = []
+    karten_base = 694200
 
     for i in range(NUM_KARTEN):
         kartenNr = karten_base + i
         kontoNr, kundenNr = random.choice(besitz_pairs)
         PIN = random.randint(1000, 9999)
-        karten.append({"PIN": PIN, "kartenNr": kartenNr, "kontoNr": kontoNr, "kundenNr": kundenNr})
 
-    values = [
-        f"({c['PIN']}, {c['kartenNr']}, {c['kontoNr']}, {c['kundenNr']})"
-        for c in karten
-    ]
-    sql_parts.append(f"INSERT INTO {t_karten} (PIN, kartenNr, kontoNr, kundenNr) VALUES\n  " + ",\n  ".join(values) + ";\n")
+        value = "(" + str(PIN) + ", " \
+                + str(kartenNr) + ", " \
+                + str(kontoNr) + ", " \
+                + str(kundenNr) + ")"
 
+        karten_values.append(value)
 
-    ueberweisungen = []
+    if len(karten_values) > 0:
+        sql += "INSERT INTO " + T_KARTEN + " (PIN, kartenNr, kontoNr, kundenNr) VALUES\n  "
+        sql += ",\n  ".join(karten_values)
+        sql += ";\n\n"
+
+    # ---------- Überweisungen ----------
+    ueberw_values = []
 
     for i in range(1, NUM_UEBERWEISUNGEN + 1):
-        kontoNrS, kontoNrE = random.sample(konto_nrs, 2)
+        # zwei verschiedene Konten
+        kontoNrS = random.choice(konten_kontoNr)
+        kontoNrE = random.choice(konten_kontoNr)
+        while kontoNrE == kontoNrS:
+            kontoNrE = random.choice(konten_kontoNr)
+
         betrag = round(random.uniform(1.0, 2000.0), 2)
         year = 2022
         month = random.randint(1, 12)
         day = random.randint(1, 28)
         datum = year * 10000 + month * 100 + day
-        ueberweisungen.append({
-            "uNr": i, "betrag": betrag, "datum": datum,
-            "kontoNrS": kontoNrS, "kontoNrE": kontoNrE
-        })
 
-    values = [
-        f"({u['betrag']}, {u['datum']}, {u['uNr']}, {u['kontoNrS']}, {u['kontoNrE']})"
-        for u in ueberweisungen
-    ]
-    sql_parts.append(f"INSERT INTO {t_ueberw} (betrag, datum, uNr, kontoNrS, kontoNrE) VALUES\n  " + ",\n  ".join(values) + ";\n")
+        value = "(" \
+                + str(betrag) + ", " \
+                + str(datum) + ", " \
+                + str(i) + ", " \
+                + str(kontoNrS) + ", " \
+                + str(kontoNrE) + ")"
 
-    return "\n".join(sql_parts)
+        ueberw_values.append(value)
+
+    if len(ueberw_values) > 0:
+        sql += "INSERT INTO " + T_UEBERW + " (betrag, datum, uNr, kontoNrS, kontoNrE) VALUES\n  "
+        sql += ",\n  ".join(ueberw_values)
+        sql += ";\n\n"
+
+    return sql
 
 
 def main():
-    t_filiale = table_name("filiale")
-    t_kunden = table_name("kunden")
-    t_mitarbeiter = table_name("mitarbeiter")
-    t_besitz = table_name("besitz")
-    t_karten = table_name("karten")
-    t_ueberw = table_name("ueberweisungen")
-
     output = []
-    output.append("-- Auto-generated SQL test data script\n")
-    output.append(f"DROP TABLE IF EXISTS {t_karten};")
-    output.append(f"DROP TABLE IF EXISTS {t_ueberw};")
-    output.append(f"DROP TABLE IF EXISTS {t_besitz};")
-    output.append(f"DROP TABLE IF EXISTS {t_mitarbeiter};")
-    output.append(f"DROP TABLE IF EXISTS {t_kunden};")
-    output.append(f"DROP TABLE IF EXISTS {t_filiale};\n")
 
+    # Drop-Statements
+    output.append("-- Auto-generated SQL test data script\n")
+    output.append("DROP TABLE IF EXISTS " + T_KARTEN + ";")
+    output.append("DROP TABLE IF EXISTS " + T_UEBERW + ";")
+    output.append("DROP TABLE IF EXISTS " + T_BESITZ + ";")
+    output.append("DROP TABLE IF EXISTS " + T_MITARBEITER + ";")
+    output.append("DROP TABLE IF EXISTS " + T_KUNDEN + ";")
+    output.append("DROP TABLE IF EXISTS " + T_FILIALE + ";\n")
+
+    # Create Tables
     output.append("-- Create tables\n")
     output.append(generate_create_tables_sql())
 
+    # Insert-Daten
     output.append("\n-- Insert test data\n")
     output.append(generate_data_and_inserts())
 
