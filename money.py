@@ -34,9 +34,12 @@ def generate_create_tables_sql():
     sql += "    kontotyp   TEXT,\n"
     sql += "    kontoNr    INT PRIMARY KEY,\n"
     sql += "    FNr        INT,\n"
-    sql += "    name       TEXT,\n"   # <-- neue Spalte
+    sql += "    telefon    VARCHAR(30),\n"
+    sql += "    adresse    TEXT,\n"
+    sql += "    gebdatum   DATE,\n"
     sql += "    FOREIGN KEY (FNr) REFERENCES " + T_FILIALE + "(FNr)\n"
     sql += ");\n\n"
+
 
     sql += "CREATE TABLE " + T_MITARBEITER + " (\n"
     sql += "    name     TEXT,\n"
@@ -97,26 +100,46 @@ def generate_data_and_inserts():
     filialen_fnr = [f[0] for f in filialen]
 
     # Kunden
-    kunden = []
+    konten_kontoNr = []
+    kunden_values = []
+
     konto_base = 100000
     kontotypen = ["Giro", "Spar", "Business"]
 
     for i in range(NUM_KONTEN):
         kontoNr = konto_base + i
+        konten_kontoNr.append(kontoNr)
+
         kontostand = random.randint(-5000, 50000)
         kontotyp = random.choice(kontotypen)
         FNr = random.choice(filialen_fnr)
-        name = "Kunde_" + str(i+1)
-        kunden.append((kontostand, kontotyp, kontoNr, FNr, name))
 
-    sql += "INSERT INTO " + T_KUNDEN + " (kontostand, kontotyp, kontoNr, FNr, name) VALUES\n"
-    rows = []
-    for k in kunden:
-        rows.append("  (%d, '%s', %d, %d, '%s')" %
-                    (k[0], esc(k[1]), k[2], k[3], esc(k[4])))
-    sql += ",\n".join(rows) + ";\n\n"
+        telefon = "0151"
+        for z in range(7):
+            telefon += str(random.randint(0, 9))
 
-    konto_nrs = [k[2] for k in kunden]
+        adresse = "Kundenstraße " + str(i + 1) + ", Stadt" + str((i % NUM_FILIALEN) + 1)
+
+        year = random.randint(1950, 2005)
+        month = random.randint(1, 12)
+        day = random.randint(1, 28)
+        gebdatum = f"{year:04d}-{month:02d}-{day:02d}"
+
+        value = "(" \
+                + str(kontostand) + ", '" \
+                + esc(kontotyp) + "', " \
+                + str(kontoNr) + ", " \
+                + str(FNr) + ", '" \
+                + esc(telefon) + "', '" \
+                + esc(adresse) + "', '" \
+                + gebdatum + "')"
+
+        kunden_values.append(value)
+
+    if len(kunden_values) > 0:
+        sql += "INSERT INTO " + T_KUNDEN + " (kontostand, kontotyp, kontoNr, FNr, telefon, adresse, gebdatum) VALUES\n  "
+        sql += ",\n  ".join(kunden_values)
+        sql += ";\n\n"
 
     # Mitarbeiter
     mitarbeiter = []
@@ -142,7 +165,8 @@ def generate_data_and_inserts():
     max_kunden_nr = int(math.ceil(NUM_KONTEN * 1.5))
 
     while len(besitz) < NUM_BESITZ_ROWS:
-        konto = random.choice(konto_nrs)
+        # FIX: choose from the list of all konto numbers
+        konto = random.choice(konten_kontoNr)
         kunde = random.randint(1, max_kunden_nr)
         key = (konto, kunde)
         if key in used:
@@ -176,10 +200,11 @@ def generate_data_and_inserts():
     ueberw = []
 
     for i in range(1, NUM_UEBERWEISUNGEN + 1):
-        s = random.choice(konto_nrs)
-        e = random.choice(konto_nrs)
+        # FIX: use konten_kontoNr instead of undefined konto_nrs
+        s = random.choice(konten_kontoNr)
+        e = random.choice(konten_kontoNr)
         while s == e:
-            e = random.choice(konto_nrs)
+            e = random.choice(konten_kontoNr)
         betrag = round(random.uniform(1.0, 2000.0), 2)
         datum = 20220000 + random.randint(101, 1231)
         ueberw.append((betrag, datum, i, s, e))
@@ -187,11 +212,14 @@ def generate_data_and_inserts():
     sql += "INSERT INTO " + T_UEBERW + " (betrag, datum, uNr, kontoNrS, kontoNrE) VALUES\n"
     rows = []
     for u in ueberw:
-        rows.append("  (%s, %d, %d, %d, %d)" %
-                    (u[0], u[1], u[2], u[3], u[4]))
-    sql += ",\n".join(rows) + ";\n\n"
+        sql += "  (%s, %d, %d, %d, %d)" % (u[0], u[1], u[2], u[3], u[4])
+        if u != ueberw[-1]:
+            sql += ",\n"
+        else:
+            sql += ";\n\n"
 
     return sql
+
 
 
 def main():
