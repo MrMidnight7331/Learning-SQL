@@ -107,7 +107,9 @@ def generate_data_and_inserts():
         kontostand = random.randint(-5000, 50000)
         kontotyp = random.choice(kontotypen)
         FNr = random.choice(filialen_fnr)
-        name = "Kunde_" + str(i+1)
+        first_name = random.choice(FIRST_NAMES)
+        last_name = random.choice(LAST_NAMES)
+        name = f"{first_name} {last_name}"
         kunden.append((kontostand, kontotyp, kontoNr, FNr, name))
 
     sql += "INSERT INTO " + T_KUNDEN + " (kontostand, kontotyp, kontoNr, FNr, name) VALUES\n"
