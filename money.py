@@ -36,15 +36,9 @@ def generate_create_tables_sql():
     sql += "    kontotyp   TEXT,\n"
     sql += "    kontoNr    INT PRIMARY KEY,\n"
     sql += "    FNr        INT,\n"
-    sql += "    telefon    VARCHAR(30),\n"
-    sql += "    adresse    TEXT,\n"
-    sql += "    gebdatum   DATE,\n"
-    sql += "    name       TEXT,\n"  # Added 'name' column for customers
     sql += "    name       TEXT,\n"   # <-- neue Spalte
     sql += "    FOREIGN KEY (FNr) REFERENCES " + T_FILIALE + "(FNr)\n"
     sql += ");\n\n"
-
-    # Other table definitions remain the same...
 
     sql += "CREATE TABLE " + T_MITARBEITER + " (\n"
     sql += "    name     TEXT,\n"
@@ -113,39 +107,6 @@ def generate_data_and_inserts():
         kontostand = random.randint(-5000, 50000)
         kontotyp = random.choice(kontotypen)
         FNr = random.choice(filialen_fnr)
-
-        telefon = "0151"
-        for z in range(7):
-            telefon += str(random.randint(0, 9))
-
-        adresse = "Kundenstraße " + str(i + 1) + ", Stadt" + str((i % NUM_FILIALEN) + 1)
-
-        year = random.randint(1950, 2005)
-        month = random.randint(1, 12)
-        day = random.randint(1, 28)
-        gebdatum = f"{year:04d}-{month:02d}-{day:02d}"
-
-        # Randomly generate a full name
-        first_name = random.choice(FIRST_NAMES)
-        last_name = random.choice(LAST_NAMES)
-        full_name = f"{first_name} {last_name}"
-
-        value = "(" \
-                + str(kontostand) + ", '" \
-                + esc(kontotyp) + "', " \
-                + str(kontoNr) + ", " \
-                + str(FNr) + ", '" \
-                + esc(telefon) + "', '" \
-                + esc(adresse) + "', '" \
-                + gebdatum + "', '" \
-                + esc(full_name) + "')"
-
-        kunden_values.append(value)
-
-    if len(kunden_values) > 0:
-        sql += "INSERT INTO " + T_KUNDEN + " (kontostand, kontotyp, kontoNr, FNr, telefon, adresse, gebdatum, name) VALUES\n  "
-        sql += ",\n  ".join(kunden_values)
-        sql += ";\n\n"
         name = "Kunde_" + str(i+1)
         kunden.append((kontostand, kontotyp, kontoNr, FNr, name))
 
@@ -158,8 +119,6 @@ def generate_data_and_inserts():
 
     konto_nrs = [k[2] for k in kunden]
 
-    # Remaining parts (Mitarbeiter, Besitz, Karten, Überweisungen) remain unchanged...
-    
     # Mitarbeiter
     mitarbeiter = []
     positions = ["Berater", "Filialleiter", "Kassierer", "Service", "IT"]
