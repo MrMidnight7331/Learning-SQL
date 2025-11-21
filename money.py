@@ -13,14 +13,16 @@ T_KUNDEN = "mm_kunden"
 T_MITARBEITER = "mm_mitarbeiter"
 T_BESITZ = "mm_besitz"
 T_KARTEN = "mm_karten"
-T_UEBERW = "mm_ueberweisungen"
+T_UEBERW = "mm_überweisungen"
 
 # Predefined lists for name generation
 FIRST_NAMES = ["Lena", "Max", "Anna", "Paul", "Laura", "David", "Mia", "Tim", "Nina", "Leo"]
 LAST_NAMES = ["Schmidt", "Müller", "Weber", "Schneider", "Fischer", "Meier", "Wolf", "Hoffmann", "Schulz", "Zimmermann"]
 
+
 def esc(s):
     return s.replace("'", "''")
+
 
 def generate_create_tables_sql():
     sql = ""
@@ -36,7 +38,7 @@ def generate_create_tables_sql():
     sql += "    kontotyp   TEXT,\n"
     sql += "    kontoNr    INT PRIMARY KEY,\n"
     sql += "    FNr        INT,\n"
-    sql += "    name       TEXT,\n"   # <-- neue Spalte
+    sql += "    name       TEXT,\n"
     sql += "    FOREIGN KEY (FNr) REFERENCES " + T_FILIALE + "(FNr)\n"
     sql += ");\n\n"
 
@@ -77,11 +79,14 @@ def generate_create_tables_sql():
 
     return sql
 
+
 def generate_data_and_inserts():
     random.seed(42)
     sql = ""
 
-    # Filialen
+    # ----------------------------------------------------
+    # 1) Filialen
+    # ----------------------------------------------------
     filialen = []
     for i in range(1, NUM_FILIALEN + 1):
         fname = "Filiale " + str(i)
@@ -97,31 +102,35 @@ def generate_data_and_inserts():
 
     filialen_fnr = [f[0] for f in filialen]
 
-    # Kunden
-    kunden = []
+    # ----------------------------------------------------
+    # 2) Kunden – initial balances + meta data
+    #    We'll adjust kontostand after generating transfers.
+    # ----------------------------------------------------
+    kunden_meta = []  # (kontoNr, kontotyp, FNr, name)
+    konto_nrs = []
+    balances = {}  # working balances per account (int)
     konto_base = 100000
     kontotypen = ["Giro", "Spar", "Business"]
 
+    MIN_BALANCE = -5000  # overdraft limit
+
     for i in range(NUM_KONTEN):
         kontoNr = konto_base + i
-        kontostand = random.randint(-5000, 50000)
+        # initial random balance (will be changed by transfers)
+        initial_balance = random.randint(MIN_BALANCE, 50000)
         kontotyp = random.choice(kontotypen)
         FNr = random.choice(filialen_fnr)
         first_name = random.choice(FIRST_NAMES)
         last_name = random.choice(LAST_NAMES)
         name = f"{first_name} {last_name}"
-        kunden.append((kontostand, kontotyp, kontoNr, FNr, name))
 
-    sql += "INSERT INTO " + T_KUNDEN + " (kontostand, kontotyp, kontoNr, FNr, name) VALUES\n"
-    rows = []
-    for k in kunden:
-        rows.append("  (%d, '%s', %d, %d, '%s')" %
-                    (k[0], esc(k[1]), k[2], k[3], esc(k[4])))
-    sql += ",\n".join(rows) + ";\n\n"
+        kunden_meta.append((kontoNr, kontotyp, FNr, name))
+        konto_nrs.append(kontoNr)
+        balances[kontoNr] = initial_balance
 
-    konto_nrs = [k[2] for k in kunden]
-
-    # Mitarbeiter
+    # ----------------------------------------------------
+    # 3) Mitarbeiter
+    # ----------------------------------------------------
     mitarbeiter = []
     positions = ["Berater", "Filialleiter", "Kassierer", "Service", "IT"]
 
@@ -139,7 +148,9 @@ def generate_data_and_inserts():
                     (esc(m[0]), m[1], m[2], esc(m[3]), m[4]))
     sql += ",\n".join(rows) + ";\n\n"
 
-    # Besitz
+    # ----------------------------------------------------
+    # 4) Besitz
+    # ----------------------------------------------------
     besitz = []
     used = set()
     max_kunden_nr = int(math.ceil(NUM_KONTEN * 1.5))
@@ -159,7 +170,9 @@ def generate_data_and_inserts():
         rows.append("  (%d, %d)" % (b[0], b[1]))
     sql += ",\n".join(rows) + ";\n\n"
 
-    # Karten
+    # ----------------------------------------------------
+    # 5) Karten
+    # ----------------------------------------------------
     karten = []
     karten_base = 53026110134523100  # groß → BIGINT
 
@@ -175,24 +188,72 @@ def generate_data_and_inserts():
         rows.append("  (%d, %d, %d, %d)" % (c[0], c[1], c[2], c[3]))
     sql += ",\n".join(rows) + ";\n\n"
 
-    # Überweisungen
+    # ----------------------------------------------------
+    # 6) Überweisungen – ensure balances stay >= MIN_BALANCE
+    #    and update balances so kontostand is consistent.
+    # ----------------------------------------------------
     ueberw = []
 
-    for i in range(1, NUM_UEBERWEISUNGEN + 1):
-        s = random.choice(konto_nrs)
-        e = random.choice(konto_nrs)
-        while s == e:
-            e = random.choice(konto_nrs)
-        betrag = round(random.uniform(1.0, 2000.0), 2)
-        datum = 20220000 + random.randint(101, 1231)
-        ueberw.append((betrag, datum, i, s, e))
+    for uNr in range(1, NUM_UEBERWEISUNGEN + 1):
+        attempts = 0
+        while True:
+            attempts += 1
+            if attempts > 1000:
+                # give up on this transfer if we somehow can't find a valid one
+                break
 
-    sql += "INSERT INTO " + T_UEBERW + " (betrag, datum, uNr, kontoNrS, kontoNrE) VALUES\n"
+            s = random.choice(konto_nrs)
+            e = random.choice(konto_nrs)
+            if s == e:
+                continue
+
+            # max we can send without dropping below overdraft limit
+            max_possible = balances[s] - MIN_BALANCE
+            if max_possible <= 0:
+                # this source can't send anything right now
+                continue
+
+            max_transfer = min(2000, max_possible)
+            if max_transfer < 1:
+                continue
+
+            # integer amount so balances stay integer
+            betrag = random.randint(1, max_transfer)
+
+            # realistic simple date: 2022MMDD, with 1 <= MM <= 12, 1 <= DD <= 28
+            year = 2022
+            month = random.randint(1, 12)
+            day = random.randint(1, 28)
+            datum = year * 10000 + month * 100 + day
+
+            # apply transfer to balances
+            balances[s] -= betrag
+            balances[e] += betrag
+
+            ueberw.append((betrag, datum, uNr, s, e))
+            break  # go to next uNr
+
+    # ----------------------------------------------------
+    # 7) Kunden-INSERT mit FINALEN Kontoständen
+    # ----------------------------------------------------
+    sql += "INSERT INTO " + T_KUNDEN + " (kontostand, kontotyp, kontoNr, FNr, name) VALUES\n"
     rows = []
-    for u in ueberw:
-        rows.append("  (%s, %d, %d, %d, %d)" %
-                    (u[0], u[1], u[2], u[3], u[4]))
+    for kontoNr, kontotyp, FNr, name in kunden_meta:
+        final_balance = balances[kontoNr]
+        rows.append("  (%d, '%s', %d, %d, '%s')" %
+                    (final_balance, esc(kontotyp), kontoNr, FNr, esc(name)))
     sql += ",\n".join(rows) + ";\n\n"
+
+    # ----------------------------------------------------
+    # 8) Überweisungen-INSERT (consistent with balances)
+    # ----------------------------------------------------
+    if ueberw:
+        sql += "INSERT INTO " + T_UEBERW + " (betrag, datum, uNr, kontoNrS, kontoNrE) VALUES\n"
+        rows = []
+        for u in ueberw:
+            rows.append("  (%d, %d, %d, %d, %d)" %
+                        (u[0], u[1], u[2], u[3], u[4]))
+        sql += ",\n".join(rows) + ";\n\n"
 
     return sql
 
@@ -220,6 +281,7 @@ def main():
         f.write(sql)
 
     print("SQL successfully written to output.txt")
+
 
 if __name__ == "__main__":
     main()
